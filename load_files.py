@@ -202,10 +202,11 @@ def load_file_cnn_sr(pp_file):
     # qv   = qv / max_qv[1]
     # pres = pres / max_pres[1]
     # Alternatively, load saved values for all 70 levels
-    max_temp = np.load('max_levels_temp_3m.npy')
-    min_temp = np.load('min_levels_temp_3m.npy')
-    max_qv = np.load('max_levels_qv_3m.npy')
-    max_pres = np.load('max_levels_pres_3m.npy')
+    path = "/data/users/lbroad/Machine_Learning/super_resolution/"
+    max_temp = np.load(path + 'max_levels_temp_3m.npy')
+    min_temp = np.load(path + 'min_levels_temp_3m.npy')
+    max_qv = np.load(path + 'max_levels_qv_3m.npy')
+    max_pres = np.load(path + 'max_levels_pres_3m.npy')
     # Normalise/standardise
     for n in range(70):
         temp_hr[n, :] = (temp_hr[n, :] - min_temp[n]) / (max_temp[n] - min_temp[n])
