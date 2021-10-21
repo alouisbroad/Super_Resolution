@@ -105,6 +105,7 @@ for super_loop in np.arange(0, n_super_loop):
         # Write out the weights once per super_loop
         model.save_weights("models_and_weights/cnn_sr_saved_weights.h5")
 
+
 print('All training completed successfully!')
 
 
