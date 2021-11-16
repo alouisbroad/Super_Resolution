@@ -1,3 +1,3 @@
 # Machine_Learning
 
-Super res
+Super resolution attempts and testing... 
