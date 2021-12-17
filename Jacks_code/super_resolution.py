@@ -14,10 +14,6 @@ from keras.optimizers import Adam
 from keras.metrics import RootMeanSquaredError
 import warnings
 from load_files import load_file_cnn_sr
-import sys
-sys.path.append('/home/h05/jbowyer/PycharmProjects/tools')
-from functions import generate_lower_resolution_data
-
 
 warnings.filterwarnings('ignore', '.*HybridHeightFactory*.')
 # Define the deep (convolutional) neural network
