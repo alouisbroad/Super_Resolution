@@ -4,10 +4,11 @@ Viewing and preparing data for super resolution.
 import numpy as np
 import iris
 import iris.analysis
-import warnings
 import os
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
+from tensorflow.keras.layers import AveragePooling2D
+import tensorflow as tf
 
 
 def make_stash_string(stashsec, stashcode):
@@ -35,103 +36,76 @@ def make_stash_string(stashsec, stashcode):
     return {'stashstr_iris': stashstr_iris, 'stashstr_fout': stashstr_fout}
 
 
-def load_file_cnn_sr(pp_file):
+def generate_LR(original_data, factor=16):
     """
-    Load in model diagnostics from pp file (for machine learning of cloud base height).
-    Each file contains 3d data (no time index).
-    :param pp_file:
+    Use average pooling layer to shrink by 1/factor
+    :param original_data:
+    :param factor:
     :return:
     """
-    warnings.filterwarnings("ignore", "HybridHeightFactory")
-    warnings.filterwarnings("ignore", "orography")
+    return AveragePooling2D(pool_size=(factor, factor))(original_data)
 
-    # Load in specific humidity
-    result = make_stash_string(0, 10)
-    cube = iris.load_cube(pp_file, iris.AttributeConstraint(STASH=result['stashstr_iris']))
-    qv_hr = cube.data
 
-    latitudes_hr = cube.coord('latitude').points
-    longitudes_hr = cube.coord('longitude').points
-    latitudes_mr = np.linspace(latitudes_hr[0], latitudes_hr[-1], len(latitudes_hr) // 20)
-    longitudes_mr = np.linspace(longitudes_hr[0], longitudes_hr[-1], len(longitudes_hr) // 20)
-    latitudes_lr = np.linspace(latitudes_hr[0], latitudes_hr[-1], len(latitudes_hr) // 40)
-    longitudes_lr = np.linspace(longitudes_hr[0], longitudes_hr[-1], len(longitudes_hr) // 40)
+def normalisation(data, ntype):
+    """
+    :param data: input data - tensor or array
+    :param ntype: Min-max normalisation or z-score (standard score) normalisation
+    :return: normalised data
+    """
+    if ntype == "minmax":
+        norm = np.array(data)
+        norm = (norm - norm.min()) / (norm.max() - norm.min())
+        return tf.convert_to_tensor(norm)
+    elif ntype == "zscore":
+        mu, variance = tf.nn.moments(data, axes=[0, 1, 2, 3])
+        return (data - mu) / tf.math.sqrt(variance)
+    else:
+        "Incorrect arguments, either minmax or zscore."
 
-    cube = cube.interpolate([('latitude', latitudes_mr),
-                             ('longitude', longitudes_mr)],
-                            iris.analysis.Linear())
-    qv_mr = cube.data
 
-    cube = cube.interpolate([('latitude', latitudes_lr),
-                             ('longitude', longitudes_lr)],
-                            iris.analysis.Linear())
-    qv_lr = cube.data
+def denormalisation(data, mu_var):
+    """
+    :param data: tensor of normalised data
+    :param mu_var: mu and var
+    :return: de-normalised data
+    """
+    return data * tf.math.sqrt(mu_var[1]) + mu_var[0]
 
-    # Load in pressure on theta levels
-    result = make_stash_string(0, 408)
-    cube = iris.load_cube(pp_file, iris.AttributeConstraint(STASH=result['stashstr_iris']))
-    pres_hr = cube.data
 
-    cube = cube.interpolate([('latitude', latitudes_mr),
-                             ('longitude', longitudes_mr)],
-                            iris.analysis.Linear())
-    pres_mr = cube.data
-
-    cube = cube.interpolate([('latitude', latitudes_lr),
-                             ('longitude', longitudes_lr)],
-                            iris.analysis.Linear())
-    pres_lr = cube.data
-
-    # Load in temperature on theta levels
-    result = make_stash_string(16, 4)
-    cube = iris.load_cube(pp_file, iris.AttributeConstraint(STASH=result['stashstr_iris']))
-    temp_hr = cube.data
-
-    cube = cube.interpolate([('latitude', latitudes_mr),
-                             ('longitude', longitudes_mr)],
-                            iris.analysis.Linear())
-    temp_mr = cube.data
-
-    cube = cube.interpolate([('latitude', latitudes_lr),
-                             ('longitude', longitudes_lr)],
-                            iris.analysis.Linear())
-    temp_lr = cube.data
-
-    # Alternatively, load saved values for all 70 levels
-    path = "/data/users/lbroad/Machine_Learning/super_resolution/"
-    max_temp = np.load(path + 'max_levels_temp_3m.npy')
-    min_temp = np.load(path + 'min_levels_temp_3m.npy')
-    max_qv = np.load(path + 'max_levels_qv_3m.npy')
-    max_pres = np.load(path + 'max_levels_pres_3m.npy')
-    # Normalise/standardise
-    for n in range(70):
-        temp_hr[n, :] = (temp_hr[n, :] - min_temp[n]) / (max_temp[n] - min_temp[n])
-        temp_mr[n, :] = (temp_mr[n, :] - min_temp[n]) / (max_temp[n] - min_temp[n])
-        temp_lr[n, :] = (temp_lr[n, :] - min_temp[n]) / (max_temp[n] - min_temp[n])
-        qv_hr[n, :] = qv_hr[n, :] / max_qv[n]
-        qv_mr[n, :] = qv_mr[n, :] / max_qv[n]
-        qv_lr[n, :] = qv_lr[n, :] / max_qv[n]
-        pres_hr[n, :] = pres_hr[n, :] / max_pres[n]
-        pres_mr[n, :] = pres_mr[n, :] / max_pres[n]
-        pres_lr[n, :] = pres_lr[n, :] / max_pres[n]
-
-    # Combine all the variables together into a big array
-    data_hr = np.append(np.append(temp_hr, qv_hr, axis=0), pres_hr, axis=0)
-    data_mr = np.append(np.append(temp_mr, qv_mr, axis=0), pres_mr, axis=0)
-    data_lr = np.append(np.append(temp_lr, qv_lr, axis=0), pres_lr, axis=0)
-    return {'data_hr': data_hr,
-            'data_mr': data_mr,
-            'data_lr': data_lr}
+def load_file(path, variable="temperature"):
+    """
+    Loads and converts data to tensor.
+    :param path: Directory where your files are.
+    :param variable: variable you want to extract.
+    :return Tensor of data.
+    """
+    stash_codes = {"specific humidity": (0, 10),
+                   "pressure": (0, 408),
+                   "temperature": (16, 4)}
+    result = make_stash_string(*stash_codes[variable])
+    data_list = []
+    for foldername, _, filenames in os.walk(path):
+        for file in filenames:
+            data = iris.load_cube(os.path.join(foldername, file),
+                                  iris.AttributeConstraint(STASH=result['stashstr_iris'])).data
+            data_list.append(data)
+    c, lvl, lon, lat = np.array(data_list).shape
+    print("Converting to Tensor.")
+    return tf.reshape(tf.convert_to_tensor(data_list), (lvl*c, lon, lat, 1))
 
 
 if __name__ == '__main__':
-    directory_str = '/data/users/jbowyer/cbh_challenge_data/'
-    file = os.listdir(directory_str)[0]
-    filename = directory_str + os.fsdecode(file)
-    result = load_file_cnn_sr(filename)
-    data_high_res = result['data_hr']
-    data_med_res = result['data_mr']
-    data_low_res = result['data_lr']
+    # directory_str = '/data/users/jbowyer/cbh_challenge_data/'
+    # directory_str = '/data/nwp1/frme/ML_minichallenge/train/'
+    directory_str = '/data/users/lbroad/Machine_Learning/super_resolution/test_data/'
+
+    high_res = load_file(directory_str)
+    high_res_mm = normalisation(high_res, "minmax")
+    high_res_zs = normalisation(high_res, "zscore")
+
+    lr_mm = generate_LR(high_res_mm, 16)
+    lr_zs = generate_LR(high_res_zs, 16)
+    print(lr_zs.shape)
 
     fig = plt.figure(figsize=(9, 9))
     gs = gridspec.GridSpec(2, 2)
@@ -139,17 +113,21 @@ if __name__ == '__main__':
 
     n = 0
     ax1 = plt.subplot(gs[0])
-    cmap1 = ax1.imshow(np.flipud(data_low_res[n]))
+    cmap1 = ax1.imshow(np.flipud(high_res_mm[n, :, :, 0]))
     cmap1.set_clim([0, 1])
     plt.colorbar(cmap1, orientation='horizontal')
 
     ax2 = plt.subplot(gs[1])
-    cmap2 = ax2.imshow(np.flipud(data_med_res[n]))
+    cmap2 = ax2.imshow(np.flipud(lr_mm[n, :, :, 0]))
     cmap2.set_clim([0, 1])
     plt.colorbar(cmap2, orientation='horizontal')
 
-    ax4 = plt.subplot(gs[2])
-    cmap4 = ax4.imshow(np.flipud(data_high_res[n]))
-    cmap4.set_clim([0, 1])
-    plt.colorbar(cmap4, orientation='horizontal')
+    ax3 = plt.subplot(gs[2])
+    cmap3 = ax3.imshow(np.flipud(high_res_zs[n, :, :, 0]))
+    cmap3.set_clim([-4, 4])
+    plt.colorbar(cmap3, orientation='horizontal')
 
+    ax4 = plt.subplot(gs[3])
+    cmap4 = ax4.imshow(np.flipud(lr_zs[n, :, :, 0]))
+    cmap4.set_clim([-4, 4])
+    plt.colorbar(cmap4, orientation='horizontal')
