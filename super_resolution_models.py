@@ -5,11 +5,18 @@ import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras import layers
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Conv2D
+from tensorflow.keras.layers import Conv2DTranspose
+from tensorflow.keras.layers import LeakyReLU
+from tensorflow.keras.layers import Reshape
+from tensorflow.keras.layers import Dense
+from tensorflow.keras.layers import Flatten
+from tensorflow.keras.layers import UpSampling2D
+from tensorflow.keras.layers import ZeroPadding2D
+from tensorflow.keras.metrics import RootMeanSquaredError
 
-from keras.models import Sequential
-from keras.layers import Conv2D, Conv2DTranspose, LeakyReLU
-from keras.metrics import RootMeanSquaredError
-from keras.utils.vis_utils import plot_model
+import torch
 
 import os
 import numpy as np
@@ -28,35 +35,125 @@ def interpolate_cbh(data, upsample, interp_type="linear"):
     ygrid = np.arange(data.shape[0])
     xgrid = np.arange(data.shape[1])
     if interp_type == "linear":
+        # Single image.
         f = interpolate.interp2d(xgrid, ygrid, data, kind="linear")
+        upscaled = f(np.linspace(0, len(xgrid), len(xgrid) * upsample),
+                     np.linspace(0, len(ygrid), len(ygrid) * upsample))
     elif interp_type == "cubic":
+        # Single image
         f = interpolate.interp2d(xgrid, ygrid, data, kind="cubic")
+        upscaled = f(np.linspace(0, len(xgrid), len(xgrid) * upsample),
+                     np.linspace(0, len(ygrid), len(ygrid) * upsample))
+    elif interp_type == "nearest":
+        # For full batch
+        upscaled = UpSampling2D(size=(upsample,upsample), interpolation="nearest")(data)
+    elif interp_type == "bilinear":
+        # For full batch.
+        upscaled = UpSampling2D(size=(upsample, upsample), interpolation="bilinear")(data)
     elif interp_type == "bicubic":
         # https://www.geeksforgeeks.org/python-opencv-bicubic-interpolation-for-resizing-image/
-        pass
-    upscaled = f(np.linspace(0, len(xgrid), len(xgrid) * upsample),
-                 np.linspace(0, len(ygrid), len(ygrid) * upsample))
+        upscaled = None
+    else:
+        print("Incorrect interpolation type chosen.")
+        upscaled = None
 
     return upscaled
 
 
-def sr_cnn():
+def cnn_upsampling(upscale_factor=16, channels=1):
     """
-    https://keras.io/examples/vision/super_resolution_sub_pixel/
+    Using upsampling and convolutions. This very slow.
     :return: model
+    """
+    conv_args = {
+        "activation": "relu",
+        "kernel_initializer": "Orthogonal",
+        "padding": "same",
+    }
+    inputs = keras.Input(shape=(None, None, channels))
+    x = layers.Conv2D(filters=64, kernel_size=5, **conv_args)(inputs)
+    if upscale_factor%2 == 0:
+        for i in range(int(upscale_factor/2)):
+            x = UpSampling2D(size=(2, 2), interpolation="bilinear")(x)
+            x = layers.Conv2D(filters=32, kernel_size=3, **conv_args)(x)
+    else:
+        print("Use even upscale.")
+    outputs = layers.Conv2D(filters=1, kernel_size=3, **conv_args)(x)
+    return keras.Model(inputs, outputs)
+
+
+def sr_cnn_sequential(input_shape=(30, 40, 1), output_shape=(480, 640, 1), upscale_factor=16, channels=1):
+    """
+    Does not run well.
+    :return: model
+    """
+    conv_args = {
+        "activation": "relu",
+        "kernel_initializer": "Orthogonal",
+        "padding": "same",
+    }
+    model = Sequential()
+    model.add(Conv2D(filters=64, kernel_size=(3, 3), input_shape=input_shape, **conv_args))
+    model.add(Conv2D(filters=64, kernel_size=(3, 3), **conv_args))
+    model.add(Conv2D(filters=32, kernel_size=(3, 3), **conv_args))
+    model.add(Conv2D(filters=channels*(upscale_factor ** 2), kernel_size=(3, 3), **conv_args))
+    # model.add(Flatten())
+    # model.add(Dense(input_shape[0]*input_shape[1]*channels*(upscale_factor ** 2), activation="relu"))
+    # model.add(Reshape(output_shape))
+
+    return model
+
+
+def sr_cnn_functional(upscale_factor=16, channels=1):
+    """
+    Model similar to the one in this link.
+    Works well.
+     https://keras.io/examples/vision/super_resolution_sub_pixel/
+    :return:
+    """
+    conv_args = {
+        "activation": "relu",
+        "kernel_initializer": "Orthogonal",
+        "padding": "same",
+    }
+    inputs = keras.Input(shape=(None, None, channels))
+    x = layers.Conv2D(filters=64, kernel_size=5, **conv_args)(inputs)
+    x = layers.Conv2D(filters=64, kernel_size=3, **conv_args)(x)
+    x = layers.Conv2D(filters=32, kernel_size=3, **conv_args)(x)
+    x = layers.Conv2D(filters=channels * (upscale_factor ** 2), kernel_size=3, **conv_args)(x)
+    outputs = tf.nn.depth_to_space(x, upscale_factor)
+
+    return keras.Model(inputs, outputs)
+
+
+def sr_cnn_subclassing():
+    """
+
+    :return:
+    """
+    pass
+
+
+def sr_conv_cnn():
+    """
+
+    :return:
     """
     conv_args = {
         "activation": "relu",
         "padding": "same",
     }
     model = Sequential()
-    model.add(Conv2D(filters=10, kernel_size=(3, 3), input_shape=(12, 16, 1), **conv_args))
-    model.add(Conv2D(filters=10, kernel_size=(3, 3), **conv_args))
+    model.add(Conv2D(filters=10, kernel_size=(3, 3), activation='relu', input_shape=(12, 16, 1)))
+    model.add(Conv2D(filters=10, kernel_size=(3, 3), activation='relu'))
+    model.add(Flatten())
+    model.add(Dense(24 * 32, activation='relu'))
+    model.add(Reshape((24, 32, 1)))
 
     return model
 
 
-def sr_trans_cnn():
+def sr_transpose_cnn():
     """
 
     :return:
@@ -107,57 +204,57 @@ def inter_up_down_sampling():
 
 
 if __name__ == '__main__':
-    directory_str = '/data/users/jbowyer/cbh_challenge_data/'
-    # directory_str = '/data/users/lbroad/Machine_Learning/super_resolution/test_data/'
-    file = os.listdir(directory_str)[0]
-    filename = directory_str + os.fsdecode(file)
-    result = load_file(filename)
-    data_high_res = result['data_hr']
-    data_med_res = result['data_mr']
-    data_low_res = result['data_lr']
+    # directory_str = '/data/users/jbowyer/cbh_challenge_data/'
+    directory_str = '/data/users/lbroad/Machine_Learning/super_resolution/test_data/'
+    hr = load_file(directory_str)
+    hr = normalisation(hr, "minmax")
+    hr = tf.random.shuffle(hr, seed=None)
+    lr = generate_LR(hr, 16)
 
-    conv_args = {
-        "activation": "relu",
-        "padding": "same",
-    }
-    model = Sequential()
-    model.add(Conv2D(filters=10, kernel_size=(3, 3), input_shape=(12, 16, 1), **conv_args))
+    train_size = 0.8
+    n_samples, rows, cols, n_channels = lr.shape
+    X_train, X_test = tf.split(lr, (round(n_samples * train_size), round(n_samples * (1 - train_size))), axis=0)
+    y_train, y_test = tf.split(hr, (round(n_samples * train_size), round(n_samples * (1 - train_size))), axis=0)
+
+    op_samples, op_rows, op_cols, op_channels = hr.shape
+    model = sr_cnn_sequential(input_shape=(rows, cols, n_channels), output_shape=(op_rows, op_cols, op_channels), upscale_factor=16, channels=1)
     model.summary()
-    plot_model(model, to_file='discriminator_plot.png', show_shapes=True, show_layer_names=True)
+
+    model = sr_cnn_functional(upscale_factor=16, channels=1)
+    model.summary()
+
+    model = cnn_upsampling()
+    model.summary()
+
+    model = sr_conv_cnn()
+    model.summary()
+
+    model = sr_transpose_cnn()
+    model.summary()
 
     opt = Adam(learning_rate=1.0e-4)
     model.compile(optimizer=opt, loss='mse', metrics=[RootMeanSquaredError()])
+    model_output = model.fit(X_train, y_train, validation_data=(X_test, y_test), epochs=100, batch_size=20)
+    # model_output = model.fit(X_train, y_train, validation_data=(X_test, y_test), verbose=2, epochs=50, batch_size=10)
+
+    n = 93
+    testing = tf.reshape(lr[n], (1, 30, 40, 1))
+    prediction = model.predict(testing)
 
     fig = plt.figure(figsize=(9, 9))
-    gs = gridspec.GridSpec(3, 2)
+    gs = gridspec.GridSpec(1, 2)
     gs.update(left=0.10, right=0.975, bottom=0.10, top=0.975, wspace=1e-1, hspace=1e-3)
 
     ax1 = plt.subplot(gs[0])
-    cmap1 = ax1.imshow(np.flipud())
+    cmap1 = ax1.imshow(np.flipud(prediction[0, :, :, 0]))
     cmap1.set_clim([0, 1])
     plt.colorbar(cmap1, orientation='horizontal')
 
-    ax2 = plt.subplot(gs[2])
-    cmap2 = ax2.imshow(np.flipud())
+    ax2 = plt.subplot(gs[1])
+    cmap2 = ax2.imshow(np.flipud(hr[n, :, :, 0]))
     cmap2.set_clim([0, 1])
     plt.colorbar(cmap2, orientation='horizontal')
 
+    Conv2DTranspose(filters=128, kernel_size=(3, 3), strides=(1, 1), input_shape=(30, 40, 1), **conv_args)(lr).shape
+    Conv2DTranspose(filters=1, kernel_size=(4, 4), strides=(2, 2), **conv_args)(lr).shape
 
-    def get_model(upscale_factor=3, channels=1):
-        conv_args = {
-            "activation": "relu",
-            "kernel_initializer": "Orthogonal",
-            "padding": "same",
-        }
-        inputs = keras.Input(shape=(None, None, channels))
-        x = Conv2D(64, 5, **conv_args)(inputs)
-        x = Conv2D(64, 3, **conv_args)(x)
-        x = Conv2D(32, 3, **conv_args)(x)
-        x = Conv2D(channels * (upscale_factor ** 2), 3, **conv_args)(x)
-        outputs = tf.nn.depth_to_space(x, upscale_factor)
-
-        return keras.Model(inputs, outputs)
-
-
-    model = get_model(upscale_factor=3, channels=1)
-    model.summary()
