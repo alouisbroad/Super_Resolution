@@ -1,6 +1,7 @@
 """
 Script to train a super resolution machine learning model.
 """
+
 import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras.optimizers import Adam
@@ -14,6 +15,7 @@ from tensorflow.keras.layers import Dense
 from tensorflow.keras.layers import Flatten
 from tensorflow.keras.layers import UpSampling2D
 from tensorflow.keras.layers import ZeroPadding2D
+from tensorflow.keras.layers import Add
 from tensorflow.keras.metrics import RootMeanSquaredError
 
 import torch
@@ -23,6 +25,7 @@ import numpy as np
 from scipy import interpolate
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
+
 from data_preprocessing import generate_LR, normalisation, load_file
 
 
@@ -136,7 +139,9 @@ def sr_cnn_subclassing():
 
 def sr_conv_cnn():
     """
+    Based on Jack's code layout.
 
+    Can't do very large or high res images.
     :return:
     """
     conv_args = {
@@ -144,47 +149,97 @@ def sr_conv_cnn():
         "padding": "same",
     }
     model = Sequential()
-    model.add(Conv2D(filters=10, kernel_size=(3, 3), activation='relu', input_shape=(12, 16, 1)))
+    model.add(Conv2D(filters=10, kernel_size=(3, 3), activation='relu', input_shape=(30, 40, 1)))
     model.add(Conv2D(filters=10, kernel_size=(3, 3), activation='relu'))
     model.add(Flatten())
-    model.add(Dense(24 * 32, activation='relu'))
-    model.add(Reshape((24, 32, 1)))
+    model.add(Dense(90 * 120, activation='relu'))
+    model.add(Reshape((96, 120, 1)))
 
     return model
 
 
-def sr_transpose_cnn():
+def sr_transpose_2():
     """
-
-    :return:
+    Using Conv2dTranspose in the model. Increases the image by a factor
+    of 2 with each transpose layer.
     """
     conv_args = {
         "activation": "relu",
         "padding": "same",
     }
-    model = Sequential()
-    model.add(Conv2DTranspose(filters=128, kernel_size=(3, 3), strides=(1, 1), input_shape=(12, 16, 1), **conv_args))
-    model.add(LeakyReLU(alpha=0.2))
-    model.add(Conv2DTranspose(filters=1, kernel_size=(4, 4), strides=(2, 2), **conv_args))
-    model.add(LeakyReLU(alpha=0.2))
+    inputs = keras.Input(shape=(None, None, 1))
+    x = Conv2DTranspose(filters=128, kernel_size=(3, 3), strides=(1, 1), **conv_args)(inputs)
+    x = LeakyReLU(alpha=0.2)(x)
+    x = Conv2DTranspose(filters=64, kernel_size=(5, 5), strides=(2, 2), **conv_args)(x)
+    x = LeakyReLU(alpha=0.2)(x)
+    x = Conv2DTranspose(filters=32, kernel_size=(5, 5), strides=(2, 2), **conv_args)(x)
+    x = LeakyReLU(alpha=0.2)(x)
+    x = Conv2DTranspose(filters=32, kernel_size=(5, 5), strides=(2, 2), **conv_args)(x)
+    x = LeakyReLU(alpha=0.2)(x)
+    x = Conv2DTranspose(filters=18, kernel_size=(5, 5), strides=(2, 2), **conv_args)(x)
+    x = LeakyReLU(alpha=0.2)(x)
+    outputs = Conv2DTranspose(filters=1, kernel_size=(5, 5), strides=(1,1), **conv_args)(x)
 
-    return model
+    return keras.Model(inputs, outputs)
 
 
-def pre_upsampling():
+def sr_transpose_4():
+    """
+    Using Conv2dTranspose in the model. Increases the image by a factor
+    of 4 with each transpose layer.
+    """
+    conv_args = {
+        "activation": "relu",
+        "padding": "same",
+    }
+    inputs = keras.Input(shape=(None, None, 1))
+    x = Conv2DTranspose(filters=128, kernel_size=(3, 3), strides=(1, 1), **conv_args)(inputs)
+    x = LeakyReLU(alpha=0.2)(x)
+    x = Conv2DTranspose(filters=64, kernel_size=(5, 5), strides=(4, 4), **conv_args)(x)
+    x = LeakyReLU(alpha=0.2)(x)
+    x = Conv2DTranspose(filters=32, kernel_size=(5, 5), strides=(4, 4), **conv_args)(x)
+    x = LeakyReLU(alpha=0.2)(x)
+    outputs = Conv2DTranspose(filters=1, kernel_size=(5, 5), strides=(1, 1), **conv_args)(x)
+
+    return keras.Model(inputs, outputs)
+
+
+def pre_upsampling(upscale_factor=16):
     """
     Using pre-upsampling
     https://beyondminds.ai/blog/an-introduction-to-super-resolution-using-deep-learning/
     """
-    pass
+    conv_args = {
+        "activation": "relu",
+        "padding": "same",
+    }
+    inputs = keras.Input(shape=(None, None, 1))
+    x = UpSampling2D(size=(upscale_factor, upscale_factor), interpolation="bilinear")(inputs)
+    x = layers.Conv2D(filters=128, kernel_size=3, **conv_args)(x)
+    x = layers.Conv2D(filters=64, kernel_size=3, **conv_args)(x)
+    x = layers.Conv2D(filters=32, kernel_size=3, **conv_args)(x)
+    outputs = Conv2DTranspose(filters=1, kernel_size=(5, 5), strides=(1,1), **conv_args)(x)
+
+    return keras.Model(inputs, outputs)
 
 
-def post_upsampling():
+def post_upsampling(upscale_factor=16):
     """
 
     :return:
     """
-    pass
+    conv_args = {
+        "activation": "relu",
+        "padding": "same",
+    }
+    inputs = keras.Input(shape=(None, None, 1))
+    x = layers.Conv2D(filters=128, kernel_size=3, **conv_args)(inputs)
+    x = layers.Conv2D(filters=64, kernel_size=3, **conv_args)(x)
+    x = layers.Conv2D(filters=32, kernel_size=3, **conv_args)(x)
+    x = UpSampling2D(size=(upscale_factor, upscale_factor), interpolation="bilinear")(x)
+    outputs = Conv2DTranspose(filters=1, kernel_size=(5, 5), strides=(1,1), **conv_args)(x)
+
+    return keras.Model(inputs, outputs)
 
 
 def prog_upsampling():
@@ -192,6 +247,7 @@ def prog_upsampling():
 
     :return:
     """
+    # See cnn_upsampling
     pass
 
 
@@ -200,7 +256,21 @@ def inter_up_down_sampling():
 
     :return:
     """
-    pass
+    conv_args = {
+        "activation": "relu",
+        "padding": "same",
+    }
+    inputs = keras.Input(shape=(None, None, 1))
+    x = layers.Conv2D(filters=128, kernel_size=3, **conv_args)(inputs)
+    x = Conv2DTranspose(filters=64, kernel_size=(5, 5), strides=(3, 3), **conv_args)(x)
+
+    x = layers.Conv2D(filters=64, kernel_size=2, strides=(2, 2), **conv_args)(x)
+    x = Conv2DTranspose(filters=64, kernel_size=(5, 5), strides=(2, 2), **conv_args)(x)
+
+    x = layers.Conv2D(filters=32, kernel_size=3, **conv_args)(x)
+    outputs = Conv2DTranspose(filters=1, kernel_size=(5, 5), strides=(1,1), **conv_args)(x)
+
+    return keras.Model(inputs, outputs)
 
 
 if __name__ == '__main__':
@@ -220,16 +290,26 @@ if __name__ == '__main__':
     model = sr_cnn_sequential(input_shape=(rows, cols, n_channels), output_shape=(op_rows, op_cols, op_channels), upscale_factor=16, channels=1)
     model.summary()
 
+    # Works well, and using the
     model = sr_cnn_functional(upscale_factor=16, channels=1)
     model.summary()
 
+    # Exceptionally slow.
     model = cnn_upsampling()
     model.summary()
 
+    # mr = generate_LR(hr, 5)
+    # ... would need to create a mr version.
     model = sr_conv_cnn()
     model.summary()
 
-    model = sr_transpose_cnn()
+    model = sr_transpose_2()
+    model.summary()
+
+    model = sr_transpose_4()
+    model.summary()
+
+    model = pre_upsampling(upscale_factor=16)
     model.summary()
 
     opt = Adam(learning_rate=1.0e-4)
@@ -255,6 +335,38 @@ if __name__ == '__main__':
     cmap2.set_clim([0, 1])
     plt.colorbar(cmap2, orientation='horizontal')
 
-    Conv2DTranspose(filters=128, kernel_size=(3, 3), strides=(1, 1), input_shape=(30, 40, 1), **conv_args)(lr).shape
-    Conv2DTranspose(filters=1, kernel_size=(4, 4), strides=(2, 2), **conv_args)(lr).shape
+    # ----------------------------------------------------------------
 
+    x = Conv2DTranspose(filters=128, kernel_size=(3, 3), strides=(1, 1), input_shape=(30, 40, 1), **conv_args)(lr)
+    Conv2DTranspose(filters=1, kernel_size=(5, 5), strides=(4, 4), **conv_args)(x).shape
+
+    factor = 4
+    k = 3
+    s = 1
+    C = 1
+    x = Conv2DTranspose(filters=(factor ** 2)*64, kernel_size=(3, 3), strides=(1, 1), padding='same')(x)
+    x = tf.nn.depth_to_space(input=x, block_size=factor)
+    outputs = Conv2DTranspose(filters=C, kernel_size=(k, k), strides=(s, s), padding='same', activation='tanh')(x)
+
+    X = Add()([x,x])
+
+    class CNN_Encoder(tf.keras.model):
+        def __init__(self, embedding_dim):
+            super(CNN_Encoder, self).__init__()
+            self.fc = tf.keras.layers.Dense(embedding_dim)
+
+        def call(self, x):
+            x = self.fc(x)
+            x = tf.nn.relu(x)
+            return x
+
+    conv_args = {
+        "activation": "relu",
+        "padding": "same",
+    }
+
+    x = layers.Conv2D(filters=128, kernel_size=3, **conv_args)(lr)
+    x = Conv2DTranspose(filters=64, kernel_size=(5, 5), strides=(3, 3), **conv_args)(x)
+    x = layers.Conv2D(filters=64, kernel_size=2, strides=(2, 2), **conv_args)(x)
+    x = Conv2DTranspose(filters=64, kernel_size=(5, 5), strides=(2, 2), **conv_args)(x)
+    x = layers.Conv2D(filters=32, kernel_size=3, **conv_args)(x)
