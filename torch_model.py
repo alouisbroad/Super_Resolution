@@ -99,6 +99,7 @@ class SequentialSuperResolution(nn.Module):
         self.main = nn.Sequential(
             nn.Conv2d(in_channels=channels, out_channels=64,
                       kernel_size=(5, 5), stride=1, padding="same"),
+            nn.BatchNorm2d(64),
             nn.ReLU(),
             nn.Conv2d(in_channels=64, out_channels=64,
                       kernel_size=(5, 5), stride=1, padding="same"),

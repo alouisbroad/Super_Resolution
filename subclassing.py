@@ -15,15 +15,55 @@ class BlockLayer(tf.keras.layers.Layer):
         return outputs
 
 
+class Linear(tf.keras.layers.Layer):
+    def __init__(self, units=32):
+        """
+        https://www.tensorflow.org/guide/keras/custom_layers_and_models#the_model_class
+        A sub-classed layer, more examples above.
+        :param units:
+        """
+        super(Linear, self).__init__()
+        self.units = units
+
+    def build(self, input_shape):
+        self.w = self.add_weight(
+            shape=(input_shape[-1], self.units),
+            initializer="random_normal",
+            trainable=True,
+        )
+        self.b = self.add_weight(
+            shape=(self.units,), initializer="random_normal", trainable=True
+        )
+
+    def call(self, inputs):
+        return tf.matmul(inputs, self.w) + self.b
+
+
+class CustomDropout(tf.keras.layers.Layer):
+    def __init__(self, rate, **kwargs):
+        """
+        https://www.tensorflow.org/guide/keras/custom_layers_and_models#the_add_metric_method
+        This changes the behaviour for in training and inference.
+        """
+        super(CustomDropout, self).__init__(**kwargs)
+        self.rate = rate
+
+    def call(self, inputs, training=None):
+        if training:
+            return tf.nn.dropout(inputs, rate=self.rate)
+        return inputs
+
+
 class SuperResolution(tf.keras.Model):
     def __init__(self, upscale_factor, channels):
-        super().__init__()
+        super(SuperResolution, self).__init__()
         conv_args = {
             "kernel_initializer": "Orthogonal",
             "padding": "same",
         }
-        self.ip = layers.Input(shape=(None, None, channels))
+        # self.ip = layers.Input(shape=(None, None, channels))
         self.conv_1 = layers.Conv2D(filters=64, kernel_size=5, **conv_args)
+        # Where should the axis be placed?
         self.bn1 = layers.BatchNormalization()  # https://keras.io/api/layers/normalization_layers/batch_normalization/
         self.ac1 = layers.ReLU()
 
@@ -42,8 +82,8 @@ class SuperResolution(tf.keras.Model):
         self.upscale_factor = upscale_factor
 
     def call(self, inputs):
-        x = self.ip(inputs)
-        x = self.conv_1(x)
+        # x = self.ip(inputs)
+        x = self.conv_1(inputs)
         x = self.bn1(x)
         x = self.ac1(x)
         x = self.conv_2(x)

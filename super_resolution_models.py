@@ -14,19 +14,21 @@ from tensorflow.keras.layers import Reshape
 from tensorflow.keras.layers import Dense
 from tensorflow.keras.layers import Flatten
 from tensorflow.keras.layers import UpSampling2D
-from tensorflow.keras.layers import ZeroPadding2D
+# from tensorflow.keras.layers import ZeroPadding2D
 from tensorflow.keras.layers import Add
 from tensorflow.keras.metrics import RootMeanSquaredError
 
-import torch
+# import torch
+# from torch_model import SuperResolution
 
-import os
+# import os
 import numpy as np
 from scipy import interpolate
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 
 from data_preprocessing import generate_LR, normalisation, load_file
+from subclassing import SuperResolution
 
 
 def interpolate_cbh(data, upsample, interp_type="linear"):
@@ -127,14 +129,6 @@ def sr_cnn_functional(upscale_factor=16, channels=1):
     outputs = tf.nn.depth_to_space(x, upscale_factor)
 
     return keras.Model(inputs, outputs)
-
-
-def sr_cnn_subclassing():
-    """
-
-    :return:
-    """
-    pass
 
 
 def sr_conv_cnn():
@@ -312,6 +306,10 @@ if __name__ == '__main__':
     model = pre_upsampling(upscale_factor=16)
     model.summary()
 
+    # from subclassing or torch_model
+    model = SuperResolution(upscale_factor=16, channels=1)
+    # model.summary()
+
     opt = Adam(learning_rate=1.0e-4)
     model.compile(optimizer=opt, loss='mse', metrics=[RootMeanSquaredError()])
     model_output = model.fit(X_train, y_train, validation_data=(X_test, y_test), epochs=100, batch_size=20)
@@ -334,39 +332,3 @@ if __name__ == '__main__':
     cmap2 = ax2.imshow(np.flipud(hr[n, :, :, 0]))
     cmap2.set_clim([0, 1])
     plt.colorbar(cmap2, orientation='horizontal')
-
-    # ----------------------------------------------------------------
-
-    x = Conv2DTranspose(filters=128, kernel_size=(3, 3), strides=(1, 1), input_shape=(30, 40, 1), **conv_args)(lr)
-    Conv2DTranspose(filters=1, kernel_size=(5, 5), strides=(4, 4), **conv_args)(x).shape
-
-    factor = 4
-    k = 3
-    s = 1
-    C = 1
-    x = Conv2DTranspose(filters=(factor ** 2)*64, kernel_size=(3, 3), strides=(1, 1), padding='same')(x)
-    x = tf.nn.depth_to_space(input=x, block_size=factor)
-    outputs = Conv2DTranspose(filters=C, kernel_size=(k, k), strides=(s, s), padding='same', activation='tanh')(x)
-
-    X = Add()([x,x])
-
-    class CNN_Encoder(tf.keras.model):
-        def __init__(self, embedding_dim):
-            super(CNN_Encoder, self).__init__()
-            self.fc = tf.keras.layers.Dense(embedding_dim)
-
-        def call(self, x):
-            x = self.fc(x)
-            x = tf.nn.relu(x)
-            return x
-
-    conv_args = {
-        "activation": "relu",
-        "padding": "same",
-    }
-
-    x = layers.Conv2D(filters=128, kernel_size=3, **conv_args)(lr)
-    x = Conv2DTranspose(filters=64, kernel_size=(5, 5), strides=(3, 3), **conv_args)(x)
-    x = layers.Conv2D(filters=64, kernel_size=2, strides=(2, 2), **conv_args)(x)
-    x = Conv2DTranspose(filters=64, kernel_size=(5, 5), strides=(2, 2), **conv_args)(x)
-    x = layers.Conv2D(filters=32, kernel_size=3, **conv_args)(x)
