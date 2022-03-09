@@ -10,7 +10,7 @@ from keras.models import Sequential
 from keras.layers import Dense
 from keras.layers import Conv2D, Conv2DTranspose
 from keras.layers import Flatten, Reshape, LeakyReLU
-from keras.optimizers import Adam
+from tensorflow.keras.optimizers import Adam
 from keras.metrics import RootMeanSquaredError
 from keras.wrappers.scikit_learn import KerasRegressor
 from sklearn.model_selection import RandomizedSearchCV
