@@ -1,10 +1,65 @@
 """
 Supporting functions
 """
+import matplotlib.gridspec as gridspec
+import matplotlib.pyplot as plt
+import tensorflow as tf
 import numpy as np
 import math
 import sys
-import time
+
+from data_preprocessing import generate_LR
+
+
+class SRCallback(tf.keras.callbacks.Callback):
+    """
+    https: // keras.io / examples / vision / super_resolution_sub_pixel /
+    """
+    def __init__(self, callback_data):
+        super(SRCallback, self).__init__()
+        self.test_data = generate_LR(callback_data)
+
+    def on_epoch_begin(self, epoch, logs=None):
+        self.psnr = []
+
+    def on_epoch_end(self, epoch, logs=None):
+        print("Mean PSNR for epoch: %.2f" % (np.mean(self.psnr)))
+        if epoch % 20 == 0:
+            prediction = upscale_image(self.model, self.test_data)
+            plot_results(prediction, "epoch-" + str(epoch), "Prediction")
+
+    def on_test_batch_end(self, batch, logs=None):
+        self.psnr.append(10 * math.log10(1 / logs["loss"]))
+
+    def on_predict_end(self, logs=None):
+        self.psnr_final = 10 * math.log10(1 / logs["loss"])
+
+
+def upscale_image(model, dataset):
+    """
+    Upscales a data.
+
+    TODO: Implement denormalisation.
+    """
+    # de-normalise
+    # data = denormalisation(dataset, mu_var=mu_var)
+    return model.predict(dataset)
+
+
+def plot_results(prediction, prefix, title):
+    """
+    Create an image showing upscaled data.
+    """
+    fig = plt.figure(figsize=(12, 18))
+    gs = gridspec.GridSpec(1, 1)
+    gs.update(left=0.10, right=0.975, bottom=0.10, top=0.975, wspace=1e-1, hspace=1e-3)
+
+    ax1 = plt.subplot(gs[0])
+    cmap1 = ax1.imshow(np.flipud(prediction[0, :, :, 0]))
+    cmap1.set_clim([0, 1])
+    plt.title("{}".format(title))
+    plt.colorbar(cmap1, orientation='horizontal')
+    plt.savefig("/data/users/lbroad/Machine_Learning/training_images/{}_{}.png".format(prefix, title))
 
 
 # Interpolation kernel
@@ -39,6 +94,17 @@ def padding(img, H, W, C):
 
 # Bicubic operation
 def bicubic(img, ratio, a):
+    """
+    Function for bi-cubic interpolation of a square grid.
+    Found and edited from here https://www.geeksforgeeks.org/python-opencv-bicubic-interpolation-for-resizing-image/
+
+    :param img:
+    :param ratio:
+    :param a:
+    :return:
+
+    TODO: Make adjustments for use on rectangular grids.
+    """
     # Get image size
     H, W, C = img.shape
 
@@ -52,7 +118,7 @@ def bicubic(img, ratio, a):
     dW = math.floor(W * ratio)
 
     # Converting into matrix
-    dst = np.zeros((dH, dW, 3))
+    dst = np.zeros((dH, dW, C))
 
     # np.zeroes generates a matrix
     # consisting only of zeroes
@@ -114,3 +180,12 @@ def bicubic(img, ratio, a):
     # Flushing the buffer
     sys.stderr.flush()
     return dst
+
+
+def denormalisation(data, mu_var):
+    """
+    :param data: tensor of normalised data
+    :param mu_var: mu and var
+    :return: de-normalised data
+    """
+    return data * tf.math.sqrt(mu_var[1]) + mu_var[0]

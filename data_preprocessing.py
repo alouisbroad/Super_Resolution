@@ -88,15 +88,6 @@ def normalisation(data, ntype):
         "Incorrect arguments, either minmax or zscore."
 
 
-def denormalisation(data, mu_var):
-    """
-    :param data: tensor of normalised data
-    :param mu_var: mu and var
-    :return: de-normalised data
-    """
-    return data * tf.math.sqrt(mu_var[1]) + mu_var[0]
-
-
 def load_file(path, variable="temperature"):
     """
     Loads and converts data to tensor with 1 channel.
