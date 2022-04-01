@@ -33,6 +33,7 @@ class SRCallback(tf.keras.callbacks.Callback):
 
     def on_predict_end(self, logs=None):
         self.psnr_final = 10 * math.log10(1 / logs["loss"])
+        print("PSNR: {}".format(self.psnr_final))
 
 
 def upscale_image(model, dataset):

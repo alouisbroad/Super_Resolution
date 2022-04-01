@@ -1,9 +1,7 @@
 """
 Script to run machine learning scripts.
 """
-import math
 import argparse
-import numpy as np
 import tensorflow as tf
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.metrics import RootMeanSquaredError
@@ -67,12 +65,12 @@ def main():
         json_file.write(model_json)
         json_file.close()
 
-    # model_output = model.fit(X_train, y_train, validation_data=(X_test, y_test),
-    #                          verbose=2, epochs=args.epochs, batch_size=args.batch_size,
-    #                          callbacks=callbacks)
     model_output = model.fit(X_train, y_train, validation_data=(X_test, y_test),
-                             epochs=args.epochs, batch_size=args.batch,
+                             verbose=2, epochs=args.epochs, batch_size=args.batch,
                              callbacks=callbacks)
+    # model_output = model.fit(X_train, y_train, validation_data=(X_test, y_test),
+    #                          epochs=args.epochs, batch_size=args.batch,
+    #                          callbacks=callbacks)
 
     model.save_weights("model_saved_weights_{}.h5".format(args.epochs))
 
