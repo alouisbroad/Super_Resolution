@@ -114,6 +114,21 @@ def main():
     plt.title("200 Epochs")
     plt.colorbar(cmap3, orientation='horizontal')
 
+    model_name = "250"
+    json_file = open(model_path + 'model_{}.json'.format(model_name), 'r')
+    loaded_model_json = json_file.read()
+    json_file.close()
+    model = model_from_json(loaded_model_json)
+    model.load_weights(model_path + 'model_saved_weights_{}.h5'.format(model_name))
+
+    y = model.predict(data)
+
+    ax3 = plt.subplot(gs[5])
+    cmap3 = ax3.imshow(np.flipud(y[n, :, :, 0]))
+    cmap3.set_clim([0, 1])
+    plt.title("250 Epochs")
+    plt.colorbar(cmap3, orientation='horizontal')
+
 
 if __name__ == '__main__':
     main()
