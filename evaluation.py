@@ -48,7 +48,8 @@ def main():
     data = tf.reshape(tf.convert_to_tensor(data), (*data.shape, 1))
 
     data = normalisation(data, "minmax")
-    model_path = "/home/h05/lbroad/PycharmProjects/Super_Resolution/models/"
+    # model_path = "/home/h05/lbroad/PycharmProjects/Super_Resolution/models/"
+    model_path = "/home/h05/lbroad/PycharmProjects/Super_Resolution/"
 
     fig = plt.figure(figsize=(12, 18))
     gs = gridspec.GridSpec(2, 3)
@@ -69,12 +70,13 @@ def main():
     plt.title("LR")
     plt.colorbar(cmap2, orientation='horizontal')
 
-    model_name = "100"
+    model_name = "250"
     json_file = open(model_path + 'model_{}.json'.format(model_name), 'r')
     loaded_model_json = json_file.read()
     json_file.close()
     model = model_from_json(loaded_model_json)
-    model.load_weights(model_path + 'model_saved_weights_{}.h5'.format(model_name))
+    model.load_weights(model_path + 'checkpoints/checkpoints'.format(model_name))
+    # model.load_weights(model_path + 'model_saved_weights_{}.h5'.format(model_name))
 
     y = model.predict(data)
 
