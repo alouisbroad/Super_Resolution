@@ -132,5 +132,9 @@ def main():
     plt.colorbar(cmap3, orientation='horizontal')
 
 
+    def plot_rmse(path):
+        pass
+
+
 if __name__ == '__main__':
     main()

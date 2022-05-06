@@ -52,7 +52,7 @@ def train(epochs, batch):
         json_file.write(model_json)
         json_file.close()
 
-    model_output = model.fit(x=dataset,
+    model_output = model.fit(x=dataset.prefetch(tf.data.AUTOTUNE),
                              validation_data=validationset,
                              epochs=epochs,
                              callbacks=callbacks,
